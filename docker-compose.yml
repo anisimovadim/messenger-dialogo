@@ -24,3 +24,14 @@ services:
         condition: service_healthy
     ports:
       - "8080:8080"
+
+frontend:
+    build:
+      context: ./messenger-frontend
+      args:
+        VITE_API_BASE_URL: http://161.104.18.144:8080
+    container_name: messenger_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
