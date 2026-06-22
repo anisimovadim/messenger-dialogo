@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -9,9 +7,11 @@ services:
       POSTGRES_USER: chat_user
       POSTGRES_PASSWORD: chat_password
       POSTGRES_DB: chat_database
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    # Порты убраны: доступ только изнутри docker-сети
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chat_user -d chat_database"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: .
@@ -20,10 +20,7 @@ services:
     environment:
       DB_URL: "postgres://chat_user:chat_password@postgres:5432/chat_database?sslmode=disable"
     depends_on:
-      - postgres
-    # Если ваше API на порту 8080
+      postgres:
+        condition: service_healthy
     ports:
-      - "8080:8080" 
-
-volumes:
-  pgdata:
+      - "8080:8080"

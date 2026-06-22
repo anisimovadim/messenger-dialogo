@@ -133,7 +133,7 @@ func (h *Hub) Run(db *pgxpool.Pool) {
 // --- НАСТРОЙКА И ИНИЦИАЛИЗАЦИЯ ИСПРАВЛЕННОЙ БД ---
 
 func initDB() *pgxpool.Pool {
-	connStr := "postgres://chat_user:chat_password@localhost:5432/chat_database"
+	connStr := "postgres://chat_user:chat_password@postgres:5432/chat_database"
 
 	// Используем пул подключений вместо одиночного коннекта
 	pool, err := pgxpool.New(context.Background(), connStr)
