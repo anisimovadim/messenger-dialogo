@@ -12,6 +12,8 @@ RUN npm run build
 # Этап 2: Раздача через Nginx
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Копируем конфиг nginx, если нужно (обычно достаточно стандартного)
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
