@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: messenger_db
+    restart: always
+    environment:
+      POSTGRES_USER: chat_user
+      POSTGRES_PASSWORD: chat_password
+      POSTGRES_DB: chat_database
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Порты убраны: доступ только изнутри docker-сети
+
+  backend:
+    build: .
+    container_name: messenger_backend
+    restart: always
+    environment:
+      DB_URL: "postgres://chat_user:chat_password@postgres:5432/chat_database?sslmode=disable"
+    depends_on:
+      - postgres
+    # Если ваше API на порту 8080
+    ports:
+      - "8080:8080" 
+
+volumes:
+  pgdata:
