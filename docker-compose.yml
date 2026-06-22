@@ -12,6 +12,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    volumes:
+      - pgdata:/var/lib/postgresql/data
 
   backend:
     build: .
@@ -25,7 +27,7 @@ services:
     ports:
       - "8080:8080"
 
-frontend:
+  frontend:
     build:
       context: ./messenger-frontend
       args:
@@ -35,3 +37,6 @@ frontend:
       - "80:80"
     depends_on:
       - backend
+
+volumes:
+  pgdata:
