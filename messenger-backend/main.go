@@ -696,7 +696,7 @@ func main() {
 
 		r.ParseMultipartForm(20 << 20)
 		file, handler, err := r.FormFile("file")
-		if err != nil { /
+		if err != nil {
 			log.Printf("Ошибка получения файла из формы: %v", err)
 			http.Error(w, "Ошибка загрузки", http.StatusBadRequest)
 			return
