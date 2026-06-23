@@ -696,7 +696,10 @@ func main() {
 
 		r.ParseMultipartForm(20 << 20)
 		file, handler, err := r.FormFile("file")
-		if err != nil { /*...*/
+		if err != nil { /
+			log.Printf("Ошибка получения файла из формы: %v", err)
+			http.Error(w, "Ошибка загрузки", http.StatusBadRequest)
+			return
 		}
 		defer file.Close()
 
@@ -718,7 +721,7 @@ func main() {
 		// Возвращаем фронтенду и случайное имя, и оригинальное
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
-			"url":           "/app/uploads/" + randomName,
+			"url":           "/uploads/" + randomName,
 			"filename":      randomName,
 			"original_name": handler.Filename,
 		})
