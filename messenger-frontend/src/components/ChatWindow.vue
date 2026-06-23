@@ -6,6 +6,8 @@ import api, { WS_URL } from "@/services/api";
 const props = defineProps(["chatId", "chatName"]);
 const emit = defineEmits(["back"]);
 
+let pingInterval = null;
+
 const messages = ref([]);
 const messageText = ref("");
 const myId = parseInt(localStorage.getItem("user_id"));
@@ -189,7 +191,21 @@ const connectWebSocket = () => {
   isPartnerTyping.value = false;
 
   socket = new WebSocket(`${WS_URL}/ws?user_id=${myId}`);
-  socket.onopen = () => sendReadReceipt();
+  socket.onopen = () => {
+    sendReadReceipt();
+    // Запускаем отправку пинга каждые 30 секунд
+    pingInterval = setInterval(() => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 30000);
+  };
+
+  socket.onclose = () => {
+    clearInterval(pingInterval); // Очищаем интервал при закрытии
+    console.log("Сокет закрыт, переподключаемся...");
+    setTimeout(connectWebSocket, 3000); // Авто-переподключение через 3 секунды
+  };
 
   socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
@@ -247,6 +263,7 @@ watch(
 onMounted(() => scrollToBottom());
 onUnmounted(() => {
   if (socket) socket.close();
+  clearInterval(pingInterval);
   clearTimeout(typingTimeout);
 });
 </script>

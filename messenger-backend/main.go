@@ -604,6 +604,11 @@ func main() {
 			if err := json.Unmarshal(payload, &msg); err != nil {
 				continue
 			}
+
+			if msg.Type == "ping" {
+				continue // Просто игнорируем, соединение остается активным
+			}
+
 			msg.CreatedAt = time.Now()
 
 			// Если это отчет о прочтении, обновляем БД и пересылаем статус в хаб
@@ -679,7 +684,7 @@ func main() {
 	})
 
 	// Создаем папку для загрузок, если её ещё нет
-	_ = os.Mkdir("uploads", os.ModePerm)
+	_ = os.MkdirAll("uploads", os.ModePerm)
 
 	// Раздача файлов из папки uploads (чтобы картинки открывались по ссылкам)
 	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
