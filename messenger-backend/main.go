@@ -718,7 +718,7 @@ func main() {
 		// Возвращаем фронтенду и случайное имя, и оригинальное
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
-			"url":           "http://localhost:8080/uploads/" + randomName,
+			"url":           "/uploads/" + randomName,
 			"filename":      randomName,
 			"original_name": handler.Filename,
 		})
