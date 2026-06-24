@@ -29,6 +29,12 @@ type User struct {
 	DisplayName string `json:"username"`
 }
 
+type Friend struct {
+    ID          int    `json:"id"`
+    DisplayName string `json:"username"`
+    Status      string `json:"status"` // 'pending', 'accepted', 'blocked'
+}
+
 type Chat struct {
 	ID          int    `json:"id"`
 	Name        string `json:"name"`
@@ -57,6 +63,11 @@ type Message struct {
 type Client struct {
 	UserID int
 	Conn   *websocket.Conn
+}
+
+type FriendRequest struct {
+    UserID   int `json:"user_id"`
+    FriendID int `json:"friend_id"`
 }
 
 type Hub struct {
@@ -118,9 +129,12 @@ func (h *Hub) Run(db *pgxpool.Pool) {
 				// Рассылаем только тем, кто состоит в этой комнате и сейчас онлайн
 				for client := range h.clients {
 					if members[client.UserID] {
-						err := client.Conn.Write(context.Background(), websocket.MessageText, payload)
+						ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+						err := client.Conn.Write(ctx, websocket.MessageText, payload)
+						cancel()
 						if err != nil {
-							log.Printf("Ошибка отправки клиенту %d: %v", client.UserID, err)
+							log.Printf("Не удалось отправить сообщение клиенту %d: %v", client.UserID, err)
+							h.unregister <- client
 						}
 					}
 				}
@@ -153,6 +167,13 @@ func initDB() *pgxpool.Pool {
 			password_hash VARCHAR(255) NOT NULL,
 			display_name VARCHAR(50) NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);`,
+		`CREATE TABLE IF NOT EXISTS friendships (
+			user_id INT REFERENCES users(id) ON DELETE CASCADE,
+			friend_id INT REFERENCES users(id) ON DELETE CASCADE,
+			status VARCHAR(20) DEFAULT 'pending', -- 'pending' или 'accepted'
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, friend_id)
 		);`,
 		`CREATE TABLE IF NOT EXISTS chats (
 			id SERIAL PRIMARY KEY,
@@ -573,6 +594,54 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]int{"chat_id": newChatID})
 	})
+
+	http.HandleFunc("/api/friends", func(w http.ResponseWriter, r *http.Request) {
+		if enableCORS(w, r) { return }
+		userID := r.URL.Query().Get("user_id")
+
+		// Получаем всех, кто связан с текущим пользователем
+		rows, _ := dbConn.Query(context.Background(), `
+			SELECT u.id, u.display_name, f.status 
+			FROM friendships f
+			JOIN users u ON (f.friend_id = u.id OR f.user_id = u.id)
+			WHERE (f.user_id = $1 OR f.friend_id = $1) AND u.id != $1`, userID)
+		
+		var friends []Friend
+		for rows.Next() {
+			var f Friend
+			rows.Scan(&f.ID, &f.DisplayName, &f.Status)
+			friends = append(friends, f)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(friends)
+	})
+
+	http.HandleFunc("/api/friends/add", func(w http.ResponseWriter, r *http.Request) {
+		if enableCORS(w, r) { return }
+		var req struct { UserID int; FriendID int }
+		json.NewDecoder(r.Body).Decode(&req)
+		
+		_, err := dbConn.Exec(context.Background(), 
+			"INSERT INTO friendships (user_id, friend_id, status) VALUES ($1, $2, 'pending')", 
+			req.UserID, req.FriendID)
+		
+		if err != nil { http.Error(w, "Уже отправлен запрос", http.StatusBadRequest); return }
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// 8. Принять запрос в друзья
+	http.HandleFunc("/api/friends/accept", func(w http.ResponseWriter, r *http.Request) {
+		if enableCORS(w, r) { return }
+		var req struct { UserID int; FriendID int }
+		json.NewDecoder(r.Body).Decode(&req)
+		
+		_, err := dbConn.Exec(context.Background(), 
+			"UPDATE friendships SET status = 'accepted' WHERE user_id = $1 AND friend_id = $2", 
+			req.FriendID, req.UserID) // Обрати внимание: меняем местами для поиска
+		
+		if err != nil { http.Error(w, "Ошибка", http.StatusBadRequest); return }
+		w.WriteHeader(http.StatusOK)
+	})	
 
 	// 6. Хэндлер WebSocket Соединений
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

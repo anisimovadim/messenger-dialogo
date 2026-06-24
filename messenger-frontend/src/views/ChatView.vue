@@ -6,6 +6,7 @@ import ChatWindow from '../components/ChatWindow.vue'
 import ProfileView from './ProfileView.vue'
 import NotificationPanel from '../components/NotificationPanel.vue'
 import UserSelector from '../components/UserSelector.vue'
+import FriendsList from '../components/FriendsList.vue'
 
 const isNotificationOpen = ref(false)
 const activeChatId = ref(null)
@@ -13,6 +14,7 @@ const activeChatName = ref('')
 const activeView = ref('chat') // 'chat' или 'profile'
 const isUserSelectorOpen = ref(false);
 const chatListRef = ref(null)
+const isFriendsOpen = ref(false);
 
 // Метод для выбора чата
 const selectChat = (chat) => {
@@ -22,17 +24,41 @@ const selectChat = (chat) => {
 }
 
 const handleNewChat = () => {
-  isUserSelectorOpen.value=false;
+  isUserSelectorOpen.value = false;
   if (chatListRef.value) {
-    chatListRef.value.fetchChats() 
+    chatListRef.value.fetchChats()
   }
 }
+
+const closeSidePanels = () => {
+  isNotificationOpen.value = false;
+  isFriendsOpen.value = false;
+};
+
+const toggleNotifications = () => {
+  if (!isNotificationOpen.value) { // Если открываем
+    closeSidePanels(); // Сначала закрываем всё
+    isNotificationOpen.value = true;
+  } else {
+    isNotificationOpen.value = false;
+  }
+  console.log(isNotificationOpen.value);
+};
+
+const toggleFriends = () => {
+  if (!isFriendsOpen.value) { // Если открываем
+    closeSidePanels(); // Сначала закрываем всё
+    isFriendsOpen.value = true;
+  } else {
+    isFriendsOpen.value = false;
+  }
+};
 </script>
 
 <template>
   <div class="flex w-full h-screen bg-slate-100 overflow-hidden font-sans antialiased">
 
-    <Sidebar @toggle-notifications="isNotificationOpen = !isNotificationOpen"
+    <Sidebar :activeTab="activeView" @click-friends="toggleFriends" @toggle-notifications="toggleNotifications"
       @show-profile="activeView = 'profile'; isNotificationOpen = false" @show-chat="activeView = 'chat'"
       @open-user-selector="isUserSelectorOpen = true" :class="activeChatId ? 'hidden md:flex' : 'flex'"
       class="flex-shrink-0 z-30" />
@@ -51,8 +77,12 @@ const handleNewChat = () => {
       </div>
     </template>
 
-    <ProfileView v-else class="flex-1 md:w-[280px]" @show-chat="activeView = 'chat'" />
+    <ProfileView v-if="activeView === 'profile'" class="flex-1 md:w-[280px]" @show-chat="activeView = 'chat'" />
 
-    <NotificationPanel :is-open="isNotificationOpen" @close="isNotificationOpen = false" />
+
+
+    <NotificationPanel v-if="isNotificationOpen" :is-open="isNotificationOpen" @close="isNotificationOpen = false" />
+
+    <FriendsList v-if="isFriendsOpen" :is-open="isFriendsOpen" @close="isFriendsOpen = false" />
   </div>
 </template>
