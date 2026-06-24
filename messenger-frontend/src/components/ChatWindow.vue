@@ -20,11 +20,21 @@ const isPartnerTyping = ref(false);
 const partnerName = ref("");
 let typingTimeout = null;
 
+
+const recordingTime = ref(0);
 const isRecording = ref(false);
+const isCancelled = ref(false);
 let mediaRecorder = null;
 let audioChunks = [];
+let timerInterval = null;
 
 const playerRefs = ref([]);
+
+const formatTime = (seconds) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
 
 const onPlay = (currentAudioInstance) => {
   playerRefs.value.forEach((player) => {
@@ -109,23 +119,26 @@ const handleFileUpload = async (event) => {
   formData.append("file", file);
 
   try {
-    // Используем Axios для загрузки файлов (headers будут подставлены автоматически)
-    const data = await api.post("/api/upload", formData, {
-      headers: { "Content-Type": "multipart/form-data" }
-    });
+    // Теперь результат вызова - это сразу данные (JSON с сервера)
+    const data = await api.post("/api/upload", formData);
+    
+    console.log("Данные от сервера:", data); // Для проверки в консоли
 
+    // Обращаемся к свойствам напрямую (data.url, data.filename и т.д.)
     socket.send(JSON.stringify({
       chat_id: props.chatId,
       user_id: myId,
-      text: data.url,
+      text: data.url, 
       type: "file",
       filename: data.filename,
       original_name: data.original_name
     }));
+
+    event.target.value = '';
   } catch (err) {
     console.error("Ошибка загрузки:", err);
+    alert("Не удалось загрузить файл: " + err.message);
   }
-  event.target.value = "";
 };
 
 const startRecording = async () => {
@@ -133,18 +146,24 @@ const startRecording = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
     audioChunks = [];
-    mediaRecorder.ondataavailable = (event) => audioChunks.push(event.data);
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) audioChunks.push(event.data);
+    };
 
     mediaRecorder.onstop = async () => {
+      if (isCancelled.value) {
+        isCancelled.value = false; // Сбрасываем флаг для будущих записей
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
       const formData = new FormData();
       formData.append("file", audioBlob, "voice.webm");
 
       try {
         // ИСПОЛЬЗУЕМ AXIOS ВМЕСТО FETCH
-        const data = await api.post("/api/upload", formData, {
-          headers: { "Content-Type": "multipart/form-data" }
-        });
+        const data = await api.post("/api/upload", formData);
 
         socket.send(
           JSON.stringify({
@@ -159,11 +178,13 @@ const startRecording = async () => {
       }
       stream.getTracks().forEach((track) => track.stop());
     };
-
     mediaRecorder.start();
+    recordingTime.value = 0;
+    timerInterval = setInterval(() => recordingTime.value++, 1000);
     isRecording.value = true;
   } catch (err) {
-    alert("Не удалось получить доступ к микрофону: " + err);
+    console.error("Ошибка микрофона:", err);
+    alert("Не удалось получить доступ к микрофону");
   }
 };
 
@@ -171,7 +192,18 @@ const stopRecording = () => {
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
     mediaRecorder.stop();
     isRecording.value = false;
+    clearInterval(timerInterval);
   }
+};
+
+const cancelRecording = () => {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    isCancelled.value = true; // Устанавливаем флаг отмены
+    mediaRecorder.stop();
+  }
+  isRecording.value = false;
+  clearInterval(timerInterval);
+  audioChunks = [];
 };
 
 const loadHistory = async (id) => {
@@ -269,7 +301,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex-1 h-screen bg-[#F8FAFC] flex flex-col min-w-0">
+  <div class="h-screen flex flex-col bg-[#F8FAFC] overflow-hidden">
     <div class="h-[76px] px-6 border-b border-slate-200 flex justify-between items-center bg-white flex-shrink-0">
       <div class="flex items-center gap-3">
         <button @click="$emit('back')" class="md:hidden p-1 -ml-2 text-slate-500 hover:text-[#6344F2]">
@@ -368,29 +400,42 @@ onUnmounted(() => {
     </div>
 
     <div class="p-5 bg-white border-t border-slate-200 flex-shrink-0">
-      <form @submit.prevent="sendMessage" class="flex items-center gap-3 bg-[#F1F3F7] px-4 py-2.5 rounded-2xl">
-        <input type="file" ref="fileInput" class="hidden" @change="handleFileUpload" />
-        <button type="button" @click="triggerFileInput" class="text-slate-400 hover:text-[#6344F2]">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <form @submit.prevent="sendMessage"
+        class="flex items-center gap-3 bg-[#F1F3F7] px-4 py-2.5 rounded-2xl transition-colors"
+        :class="isRecording ? 'border-2 border-red-500 bg-red-50' : ''">
+
+        <input type="file" ref="fileInput" class="hidden text-base" @change="handleFileUpload" />
+
+        <button type="button" @click="isRecording ? cancelRecording() : triggerFileInput()"
+          class="text-slate-400 transition-colors" :class="isRecording ? 'hover:text-red-500' : 'hover:text-[#6344F2]'">
+          <svg v-if="isRecording" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
               d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32a1.5 1.5 0 0 1-2.12-2.121L16.202 7.5" />
           </svg>
         </button>
-        <input v-model="messageText" @input="handleInputChange" type="text" placeholder="Введите сообщение..."
-          class="flex-1 bg-transparent text-sm font-medium text-slate-800 focus:outline-none" />
-        <button type="button" @click="isRecording ? stopRecording() : startRecording()" :class="isRecording
-          ? 'text-red-500 animate-ping'
-          : 'text-slate-400 hover:text-[#6344F2]'
-          " class="p-1 rounded-full">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+        <div v-if="isRecording" class="flex-1 text-sm font-bold text-red-500 flex items-center gap-2">
+          <span class="relative flex h-3 w-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+          </span>
+          {{ formatTime(recordingTime) }}
+        </div>
+        <input v-else v-model="messageText" @input="handleInputChange" type="text" placeholder="Введите сообщение..."
+          class="flex-1 bg-transparent text-base font-medium text-slate-800 focus:outline-none" />
+
+        <button type="button" @click="isRecording ? stopRecording() : startRecording()"
+          class="p-2 rounded-full transition-all"
+          :class="isRecording ? 'bg-green-500 text-white scale-110' : 'text-slate-400 hover:text-[#6344F2]'">
+          <svg v-if="isRecording" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+          </svg>
+          <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
               d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3v-6a3 3 0 0 1 6 0v6a3 3 0 0 1-3 3z" />
-          </svg>
-        </button>
-        <button type="submit" class="text-[#6344F2] cursor-pointer pl-1">
-          <svg class="w-5 h-5 rotate-45" fill="currentColor" viewBox="0 0 24 24">
-            <path
-              d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.53 60.53 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
           </svg>
         </button>
       </form>

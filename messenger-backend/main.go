@@ -768,7 +768,7 @@ func main() {
 			return
 		}
 
-		r.ParseMultipartForm(20 << 20)
+		r.ParseMultipartForm(50 << 20)
 		file, handler, err := r.FormFile("file")
 		if err != nil {
 			log.Printf("Ошибка получения файла из формы: %v", err)
